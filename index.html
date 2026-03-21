@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Vibe Keys — Type. Explode. Feel Things.</title>
+<meta name="description" content="An interactive particle keyboard. Type anything and watch it explode into color.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #070710;
+  --surface: #0f0f1c;
+  --border: rgba(255,255,255,0.08);
+  --border-hover: rgba(255,255,255,0.18);
+  --text: #f0f0f8;
+  --muted: rgba(240,240,248,0.45);
+  --accent: #7c6bff;
+  --accent2: #ff6b9d;
+  --key-bg: #13132a;
+  --key-hover: #1e1e3a;
+  --key-active: #2a2a50;
+  --radius: 10px;
+  --canvas-h: 320px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── LAYOUT ── */
+#app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── HEADER ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.logo {
+  font-family: 'Syne', sans-serif;
+  font-size: clamp(22px, 5vw, 32px);
+  font-weight: 800;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, #7c6bff, #ff6b9d);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.logo-sub {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-top: -4px;
+}
+.header-btns { display: flex; gap: 8px; }
+
+/* ── CANVAS ── */
+#canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: var(--canvas-h);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #05050f;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+}
+canvas { display: block; width: 100%; height: 100%; }
+
+#canvas-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity .6s;
+}
+#canvas-overlay.hidden { opacity: 0; }
+.overlay-inner {
+  text-align: center;
+  border: 1px dashed rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 1.5rem 2rem;
+}
+.overlay-inner .big { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: rgba(255,255,255,0.6); }
+.overlay-inner .small { font-size: 11px; color: var(--muted); margin-top: 6px; letter-spacing: 1px; }
+
+/* HUD */
+#hud-top {
+  position: absolute; top: 12px; left: 14px; right: 14px;
+  display: flex; justify-content: space-between; align-items: center;
+  pointer-events: none;
+}
+#vibe-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 2px;
+  color: rgba(255,255,255,0.65); text-transform: uppercase;
+  transition: color .4s;
+}
+#heat-dots { display: flex; gap: 3px; }
+.hdot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  transition: background .15s, transform .15s;
+}
+
+#score-hud {
+  position: absolute; bottom: 40px; left: 14px; right: 14px;
+  display: flex; justify-content: space-between;
+  pointer-events: none; opacity: 0; transition: opacity .3s;
+}
+.pscore {
+  font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
+  padding: 4px 12px; border-radius: 6px;
+}
+#p1score { color: #7c6bff; background: rgba(124,107,255,0.15); }
+#p2score { color: #ff6b9d; background: rgba(255,107,157,0.15); }
+
+#beat-pulse {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #cc5de8; opacity: 0; transition: opacity .05s, transform .05s;
+}
+#rec-badge {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #ff6b6b;
+  opacity: 0; transition: opacity .3s; white-space: nowrap;
+}
+.rec-blink { width: 7px; height: 7px; border-radius: 50%; background: #ff6b6b; animation: blink 1s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+#typed-trail {
+  position: absolute; bottom: 10px; left: 0; right: 0;
+  text-align: center; font-size: 18px; font-weight: 700;
+  letter-spacing: 5px; color: rgba(255,255,255,0.08);
+  pointer-events: none; overflow: hidden; white-space: nowrap; padding: 0 12px;
+}
+
+#combo-flash {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none; opacity: 0; transition: opacity .12s;
+}
+#combo-text {
+  font-family: 'Syne', sans-serif; font-size: clamp(32px, 8vw, 52px);
+  font-weight: 800; letter-spacing: 3px;
+}
+
+/* ── SECTION CARDS ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .85rem 1rem;
+}
+.card-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--muted); margin-bottom: .65rem;
+  display: flex; align-items: center; gap: 6px;
+}
+.card-title::before {
+  content: ''; display: block; width: 3px; height: 10px;
+  background: var(--accent); border-radius: 2px;
+}
+
+/* ── MODE PILLS ── */
+#mode-grid {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.mpill {
+  padding: 6px 13px; border-radius: 99px; font-size: 11px; font-weight: 700;
+  letter-spacing: .5px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: all .15s; white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+}
+.mpill:hover { border-color: var(--border-hover); color: var(--text); }
+.mpill.on { border-color: var(--accent); color: var(--accent); background: rgba(124,107,255,0.1); }
+.mpill.locked { opacity: .35; cursor: default; }
+.mpill.just-unlocked {
+  border-color: #cc5de8; color: #cc5de8;
+  background: rgba(204,93,232,0.1);
+  animation: unlockpop .6s ease-out 3;
+}
+@keyframes unlockpop {
+  0%,100%{transform:scale(1)} 50%{transform:scale(1.08)}
+}
+
+/* ── TOOLS GRID ── */
+#tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 6px;
+}
+.tool-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--muted); cursor: pointer;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+  transition: all .15s; text-align: left; white-space: nowrap; overflow: hidden;
+}
+.tool-btn:hover { border-color: var(--border-hover); color: var(--text); }
+.tool-btn.on { border-color: var(--accent); color: var(--accent); background: rgba(124,107,255,0.1); }
+.tool-btn.on-danger { border-color: var(--accent2); color: var(--accent2); background: rgba(255,107,157,0.1); }
+.tool-icon { font-size: 14px; flex-shrink: 0; }
+
+/* ── GRAVITY ── */
+#gravity-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.gbtn {
+  padding: 6px 12px; border-radius: 7px; font-size: 11px; font-weight: 700;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  cursor: pointer; transition: all .15s;
+  font-family: 'JetBrains Mono', monospace;
+}
+.gbtn:hover { color: var(--text); border-color: var(--border-hover); }
+.gbtn.on { border-color: var(--accent); color: var(--accent); background: rgba(124,107,255,0.1); }
+
+/* ── BPM SLIDER ── */
+#beat-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#bpm-slider {
+  flex: 1; min-width: 100px; height: 4px; border-radius: 2px;
+  accent-color: var(--accent); cursor: pointer;
+}
+#bpm-display {
+  font-size: 13px; font-weight: 700; color: var(--text); min-width: 50px; text-align: right;
+}
+
+/* ── KEYBOARD ── */
+#keyboard-wrap { display: flex; flex-direction: column; gap: 5px; }
+.kb-row { display: flex; gap: 4px; justify-content: center; }
+.key {
+  height: 42px; flex: 1;
+  max-width: 58px; min-width: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--key-bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(10px, 2.5vw, 13px); font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .08s, background .1s, border-color .1s, box-shadow .1s;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  white-space: nowrap; overflow: hidden;
+}
+.key:hover { background: var(--key-hover); border-color: var(--border-hover); }
+.key.pressed, .key:active {
+  transform: scale(0.86);
+  background: var(--key-active);
+  border-color: rgba(124,107,255,0.5);
+}
+.key.wide { max-width: 72px; font-size: 10px; }
+.key.spc { max-width: 220px; flex: 3; font-size: 10px; letter-spacing: 2px; }
+.key.beat-lit { box-shadow: 0 0 8px rgba(204,93,232,0.5); border-color: rgba(204,93,232,0.5); }
+.key.p1-lit.pressed { border-color: rgba(124,107,255,.7); box-shadow: 0 0 10px rgba(124,107,255,.4); }
+.key.p2-lit.pressed { border-color: rgba(255,107,157,.7); box-shadow: 0 0 10px rgba(255,107,157,.4); }
+
+/* ── P2 KEYBOARD ── */
+#kb2-wrap {
+  display: none;
+  background: rgba(255,107,157,0.05);
+  border: 1px solid rgba(255,107,157,0.2);
+  border-radius: var(--radius); padding: .75rem;
+  flex-direction: column; gap: 5px;
+}
+#kb2-wrap.show { display: flex; }
+.kb2-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; color: rgba(255,107,157,0.7); margin-bottom: 4px;
+}
+
+/* ── COMBOS HINT ── */
+#combos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 5px;
+}
+.combo-chip {
+  padding: 5px 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: transparent;
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  text-align: center; letter-spacing: .5px;
+  transition: border-color .3s, color .3s;
+}
+.combo-chip.fired { border-color: #ffd93d; color: #ffd93d; }
+
+/* ── FOOTER ── */
+footer {
+  text-align: center; font-size: 10px; color: var(--muted);
+  letter-spacing: 1.5px; padding-top: .5rem;
+}
+
+/* ── ICON BUTTONS ── */
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 8px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--muted); cursor: pointer; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.icon-btn:hover { border-color: var(--border-hover); color: var(--text); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 480px) {
+  :root { --canvas-h: 260px; }
+  #app { padding: .75rem .6rem 2.5rem; gap: .75rem; }
+  .key { height: 38px; border-radius: 6px; }
+  #tools-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 360px) {
+  .key { height: 34px; font-size: 9px; }
+  .key.spc { max-width: 160px; }
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header>
+    <div>
+      <div class="logo">VIBE KEYS</div>
+      <div class="logo-sub">type. explode. feel things.</div>
+    </div>
+    <div class="header-btns">
+      <button class="icon-btn" id="btn-sound" title="Toggle sound" onclick="toggleSound()">♪</button>
+      <button class="icon-btn" title="Save canvas" onclick="saveCanvas()">↓</button>
+      <button class="icon-btn" title="Clear canvas" onclick="clearAll()">✕</button>
+    </div>
+  </header>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <canvas id="c"></canvas>
+
+    <div id="canvas-overlay">
+      <div class="overlay-inner">
+        <div class="big">tap any key to start</div>
+        <div class="small">or press a key on screen below</div>
+      </div>
+    </div>
+
+    <div id="hud-top">
+      <span id="vibe-label">idle</span>
+      <div id="heat-dots"></div>
+    </div>
+
+    <div id="score-hud">
+      <span class="pscore" id="p1score">P1 · 0</span>
+      <span class="pscore" id="p2score">P2 · 0</span>
+    </div>
+
+    <div id="beat-pulse"></div>
+    <div id="rec-badge"><div class="rec-blink"></div><span>REC</span></div>
+    <div id="typed-trail"></div>
+    <div id="combo-flash"><span id="combo-text"></span></div>
+  </div>
+
+  <!-- MODES -->
+  <div class="card">
+    <div class="card-title">particle mode</div>
+    <div id="mode-grid">
+      <button class="mpill on" data-mode="fireworks">🎆 fireworks</button>
+      <button class="mpill" data-mode="bubbles">🫧 bubbles</button>
+      <button class="mpill" data-mode="glitch">⚡ glitch</button>
+      <button class="mpill" data-mode="stars">✦ stars</button>
+      <button class="mpill" data-mode="confetti">🎉 confetti</button>
+      <button class="mpill" data-mode="ripple">〰 ripple</button>
+      <button class="mpill" data-mode="dna">🧬 dna</button>
+      <button class="mpill locked" data-mode="inferno" id="pill-inferno">🔒 inferno</button>
+      <button class="mpill locked" data-mode="matrix" id="pill-matrix">🔒 matrix</button>
+      <button class="mpill locked" data-mode="galaxy" id="pill-galaxy">🔒 galaxy</button>
+    </div>
+  </div>
+
+  <!-- TOOLS -->
+  <div class="card">
+    <div class="card-title">tools</div>
+    <div id="tools-grid">
+      <button class="tool-btn" id="btn-record" onclick="toggleRecord()">
+        <span class="tool-icon">⏺</span> record
+      </button>
+      <button class="tool-btn" id="btn-replay" onclick="startReplay()" style="display:none">
+        <span class="tool-icon">▶</span> replay
+      </button>
+      <button class="tool-btn" id="btn-beat" onclick="toggleBeat()">
+        <span class="tool-icon">♩</span> beat sync
+      </button>
+      <button class="tool-btn" id="btn-paint" onclick="togglePaint()">
+        <span class="tool-icon">✏</span> paint mode
+      </button>
+      <button class="tool-btn" id="btn-multi" onclick="toggleMulti()">
+        <span class="tool-icon">⚔</span> vs mode
+      </button>
+      <button class="tool-btn" id="btn-worm" onclick="toggleWormhole()">
+        <span class="tool-icon">◎</span> wormhole
+      </button>
+    </div>
+
+    <!-- beat bpm row -->
+    <div id="beat-row" style="margin-top:.65rem;display:none">
+      <span style="font-size:11px;color:var(--muted)">bpm</span>
+      <input type="range" id="bpm-slider" min="60" max="200" value="120"
+        oninput="changeBpm(this.value)">
+      <span id="bpm-display">120 bpm</span>
+    </div>
+  </div>
+
+  <!-- GRAVITY -->
+  <div class="card">
+    <div class="card-title">gravity direction</div>
+    <div id="gravity-btns">
+      <button class="gbtn on" data-g="down" onclick="setGravity('down',this)">↓ down</button>
+      <button class="gbtn" data-g="up" onclick="setGravity('up',this)">↑ up</button>
+      <button class="gbtn" data-g="left" onclick="setGravity('left',this)">← left</button>
+      <button class="gbtn" data-g="right" onclick="setGravity('right',this)">→ right</button>
+      <button class="gbtn" data-g="orbit" onclick="setGravity('orbit',this)">⊙ orbit</button>
+      <button class="gbtn" data-g="zero" onclick="setGravity('zero',this)">✦ zero-g</button>
+    </div>
+  </div>
+
+  <!-- KEYBOARD P1 -->
+  <div class="card">
+    <div class="card-title">keyboard — player 1</div>
+    <div id="keyboard-wrap"></div>
+  </div>
+
+  <!-- KEYBOARD P2 -->
+  <div id="kb2-wrap">
+    <div class="kb2-label">player 2 — use ASDFG / ZXCVB keys on your keyboard</div>
+    <div id="kb2-inner"></div>
+  </div>
+
+  <!-- COMBOS -->
+  <div class="card">
+    <div class="card-title">secret combos — type these words</div>
+    <div id="combos-grid">
+      <div class="combo-chip" data-word="FIRE">FIRE 🔥</div>
+      <div class="combo-chip" data-word="BOOM">BOOM 💥</div>
+      <div class="combo-chip" data-word="CHAOS">CHAOS 🌀</div>
+      <div class="combo-chip" data-word="VIBE">VIBE ✨</div>
+      <div class="combo-chip" data-word="NUKE">NUKE ☢</div>
+      <div class="combo-chip" data-word="INFERNO" style="border-color:rgba(255,100,0,.3);color:rgba(255,100,0,.5)">INFERNO 🔓</div>
+      <div class="combo-chip" data-word="MATRIX" style="border-color:rgba(0,255,65,.2);color:rgba(0,255,65,.4)">MATRIX 🔓</div>
+      <div class="combo-chip" data-word="GALAXY" style="border-color:rgba(192,132,252,.3);color:rgba(192,132,252,.5)">GALAXY 🔓</div>
+    </div>
+  </div>
+
+  <footer>made with vibe keys &nbsp;·&nbsp; tap keys, feel something</footer>
+</div>
+
+<script>
+/* ─────────────────────────────────────────
+   KEYBOARD BUILDER
+───────────────────────────────────────── */
+const ROWS = [
+  ['1','2','3','4','5','6','7','8','9','0'],
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['Z','X','C','V','B','N','M','⌫','SPC']
+];
+const P2ROWS = [
+  ['A','S','D','F','G'],
+  ['Z','X','C','V','B']
+];
+
+function buildKB(rows, container, p2) {
+  rows.forEach(row => {
+    const rowEl = document.createElement('div');
+    rowEl.className = 'kb-row';
+    row.forEach(k => {
+      const btn = document.createElement('button');
+      const isSpc = k === 'SPC';
+      const isBack = k === '⌫';
+      btn.className = 'key' + (isSpc ? ' spc' : isBack ? ' wide' : '') + (p2 ? ' p2k' : ' p1k');
+      btn.textContent = isSpc ? 'SPACE' : k;
+      btn.dataset.k = k;
+      btn.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        flashKey(btn);
+        handleChar(isSpc ? ' ' : isBack ? 'Backspace' : k, p2 ? 2 : 1);
+      });
+      rowEl.appendChild(btn);
+    });
+    container.appendChild(rowEl);
+  });
+}
+
+buildKB(ROWS, document.getElementById('keyboard-wrap'), false);
+buildKB(P2ROWS, document.getElementById('kb2-inner'), true);
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key;
+  if (k === 'Backspace') { e.preventDefault(); handleChar('Backspace', 1); hlKey('⌫', false); return; }
+  if (k === ' ') { e.preventDefault(); handleChar(' ', 1); hlKey('SPC', false); return; }
+  if (k.length === 1) { handleChar(k.toUpperCase(), 1); hlKey(k.toUpperCase(), false); }
+});
+
+function hlKey(k, p2) {
+  const sel = p2 ? '.p2k' : '.p1k';
+  const btn = document.querySelector(`${sel}[data-k="${k}"]`);
+  if (btn) flashKey(btn);
+}
+function flashKey(btn) {
+  btn.classList.add('pressed');
+  setTimeout(() => btn.classList.remove('pressed'), 130);
+}
+
+/* ─────────────────────────────────────────
+   CANVAS
+───────────────────────────────────────── */
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const cWrap = document.getElementById('canvas-wrap');
+
+function resize() {
+  const r = cWrap.getBoundingClientRect();
+  canvas.width = r.width * devicePixelRatio;
+  canvas.height = r.height * devicePixelRatio;
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+}
+resize();
+window.addEventListener('resize', resize);
+const W = () => canvas.width / devicePixelRatio;
+const H = () => canvas.height / devicePixelRatio;
+
+/* ─────────────────────────────────────────
+   STATE
+───────────────────────────────────────── */
+let mode = 'fireworks';
+let particles = [], ripples = [];
+let keyCount = 0, heat = 0, typed = '';
+let soundOn = true, gravDir = 'down';
+let painting = false, paintDown = false;
+let multiOn = false, beatOn = false, wormOn = false;
+let recording = false, recLog = [], replaying = false, replayIdx = 0, replayStart = 0;
+let wormX = 0, wormY = 0, wormActive = false;
+let bpm = 120, beatTimer = null, beatCount = 0;
+let p1score = 0, p2score = 0;
+let comboBuffer = '';
+const unlockedModes = new Set();
+let hasStarted = false;
+
+/* ─────────────────────────────────────────
+   DATA
+───────────────────────────────────────── */
+const PAL = {
+  fireworks: ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b','#cc5de8','#f06595','#74c0fc'],
+  bubbles:   ['#a9e4d7','#b8d4f0','#d4b8f0','#c8f7b0','#f0b8d4','#ffd6a5'],
+  glitch:    ['#00fff5','#ff00d4','#fff','#39ff14','#ff073a','#ffff00'],
+  stars:     ['#fff9c4','#ffe082','#ffcc02','#fff','#b3e5fc','#ffd6e0'],
+  confetti:  ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b','#cc5de8','#f06595','#74c0fc','#a9e4d7','#ffb3ba'],
+  ripple:    ['#4d96ff','#74c0fc','#a9e4d7','#6bcb77','#ffd93d','#ff6b6b'],
+  dna:       ['#69db7c','#38d9a9','#4dabf7','#da77f2','#ff8787'],
+  inferno:   ['#ff4500','#ff6b00','#ff9900','#ffcc00','#fff0c0','#ff2200'],
+  matrix:    ['#00ff41','#00cc33','#008f26','#39ff14','#fff'],
+  galaxy:    ['#c084fc','#818cf8','#38bdf8','#f0abfc','#e879f9','#fff','#fbbf24']
+};
+const VIBES = {
+  fireworks: ['warming up','popping off','FIRE','INSANE','CHAOS'],
+  bubbles:   ['floating...','so chill','dreamy','cloud nine','ascended'],
+  glitch:    ['init...','ERR0R','GL1TCH','br0ken','404 BRAIN'],
+  stars:     ['twinkling','sparkly','wow','STELLAR','SUPERNOVA'],
+  confetti:  ['party starting','festive','PARTY MODE','CELEBRATING','CONFETTI STORM'],
+  ripple:    ['calm waters','rippling','WAVES','TSUNAMI','OCEAN CHAOS'],
+  dna:       ['mutating','evolving','splicing','ACGT','REWRITING DNA'],
+  inferno:   ['smoldering','burning','ABLAZE','INFERNO','THE SUN'],
+  matrix:    ['connecting...','hacking...','IN THE MATRIX','REDPILL','I AM NEO'],
+  galaxy:    ['floating','drifting','DEEP SPACE','NEBULA','SINGULARITY']
+};
+const COMBOS = {
+  FIRE:   { label: 'FIRE!',       color: '#ff6b6b', fn: comboFire },
+  BOOM:   { label: 'BOOM!',       color: '#ffd93d', fn: comboBoom },
+  CHAOS:  { label: 'CHAOS!',      color: '#cc5de8', fn: comboChaos },
+  VIBE:   { label: 'VIBE CHECK',  color: '#7c6bff', fn: comboVibe },
+  NUKE:   { label: 'NUKE ☢',      color: '#39ff14', fn: comboNuke }
+};
+const UNLOCKS = { INFERNO: 'inferno', MATRIX: 'matrix', GALAXY: 'galaxy' };
+
+function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+function rnd(min, max) { return min + Math.random() * (max - min); }
+
+/* ─────────────────────────────────────────
+   AUDIO
+───────────────────────────────────────── */
+let audioCtx = null;
+function getAC() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function tone(f, type, dur, vol, det) {
+  if (!soundOn) return;
+  try {
+    const ac = getAC();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f, ac.currentTime);
+    if (det) o.detune.setValueAtTime(det, ac.currentTime);
+    g.gain.setValueAtTime(vol || 0.1, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    o.start(); o.stop(ac.currentTime + dur);
+  } catch(e) {}
+}
+function noise(dur, vol) {
+  if (!soundOn) return;
+  try {
+    const ac = getAC();
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ac.createBufferSource(), g = ac.createGain();
+    src.buffer = buf; src.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(vol || 0.05, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+    src.start(); src.stop(ac.currentTime + dur);
+  } catch(e) {}
+}
+function comboSound() {
+  [0,90,180,270,360].forEach((d, i) =>
+    setTimeout(() => { tone(300 + i*150, 'sine', .3, .15); tone(400 + i*200, 'triangle', .2, .08); }, d)
+  );
+}
+function beatSound() { tone(55, 'sine', .07, .22); tone(110, 'sine', .04, .1); }
+
+const KEY_SFX = {
+  fireworks: () => tone(200 + rnd(0,400), 'sine', .18, .1),
+  bubbles:   () => tone(600 + rnd(0,400), 'sine', .25, .08),
+  glitch:    () => { noise(.06, .07); tone(80 + rnd(0,60), 'sawtooth', .07, .08); },
+  stars:     () => tone(900 + rnd(0,500), 'sine', .28, .07),
+  confetti:  () => tone(400 + rnd(0,300), 'triangle', .12, .09),
+  ripple:    () => tone(280 + rnd(0,200), 'sine', .35, .08),
+  dna:       () => { tone(440 + rnd(0,220), 'sine', .2, .07); tone(330 + rnd(0,110), 'triangle', .15, .04); },
+  inferno:   () => { noise(.05, .09); tone(100 + rnd(0,80), 'sawtooth', .1, .1); },
+  matrix:    () => tone(300 + rnd(0,100), 'square', .08, .07),
+  galaxy:    () => tone(500 + rnd(0,800), 'sine', .4, .06, rnd(-50,50))
+};
+
+/* ─────────────────────────────────────────
+   GRAVITY
+───────────────────────────────────────── */
+function gravVec() {
+  const f = .07;
+  if (gravDir === 'down')  return { gx: 0,  gy: f };
+  if (gravDir === 'up')    return { gx: 0,  gy: -f };
+  if (gravDir === 'left')  return { gx: -f, gy: 0 };
+  if (gravDir === 'right') return { gx: f,  gy: 0 };
+  return { gx: 0, gy: 0 };
+}
+
+/* ─────────────────────────────────────────
+   SPAWN
+───────────────────────────────────────── */
+function spawn(key, player) {
+  if (KEY_SFX[mode]) KEY_SFX[mode]();
+  const pal = PAL[mode] || PAL.fireworks;
+  const count = mode === 'confetti' ? 28 : mode === 'inferno' ? 26 : 22;
+  const side = player === 2 ? .65 : .1;
+  const cx = W() * side + rnd(0, W() * .35);
+  const cy = H() * .2 + rnd(0, H() * .55);
+
+  if (recording) recLog.push({ t: Date.now(), key, player, cx, cy });
+
+  if (mode === 'ripple' || mode === 'galaxy') {
+    ripples.push({ x: cx, y: cy, r: 0, maxR: 60 + rnd(0,60), color: pick(pal), life: 1, speed: 3 + rnd(0,2) });
+  }
+  if (mode === 'matrix') {
+    for (let i = 0; i < count; i++) {
+      particles.push({ x: rnd(0,W()), y: 0, vx: 0, vy: rnd(1,4), life: 1, decay: .015,
+        color: pick(pal), size: 13 + rnd(0,8), shape: 'char',
+        char: String.fromCharCode(0x30A0 + Math.floor(rnd(0,96))),
+        rot: 0, rotV: 0, gx: 0, gy: .04, wobble: 0, phase: 0 });
+    }
+    particles.push({ x: cx, y: cy, vx: rnd(-.5,.5), vy: -3, life: 1, decay: .007,
+      color: pick(pal), size: 18, shape: 'char', char: key === ' ' ? '$' : key,
+      rot: 0, rotV: 0, gx: 0, gy: .03, wobble: 0, phase: 0 });
+    return;
+  }
+  const gv = gravVec();
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 / count) * i + rnd(0, .5);
+    const spd = rnd(1.5, 6.5);
+    const isInferno = mode === 'inferno';
+    const isConfetti = mode === 'confetti';
+    particles.push({
+      x: cx, y: cy,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd - (mode === 'bubbles' ? 1.5 : 0),
+      life: 1, decay: .012 + rnd(0,.018),
+      color: isConfetti ? `hsl(${rnd(0,360)},90%,65%)` : isInferno ? `hsl(${rnd(10,50)},90%,${rnd(50,70)}%)` : pick(pal),
+      size: rnd(3, 10), shape: getShape(),
+      rot: rnd(0, Math.PI*2), rotV: rnd(-.2,.2),
+      gx: gravDir === 'orbit' ? 0 : gv.gx,
+      gy: gravDir === 'orbit' ? 0 : gv.gy,
+      wobble: mode === 'dna' ? .25 : mode === 'confetti' ? .12 : 0,
+      phase: rnd(0, Math.PI*2),
+      orbitAngle: Math.atan2(cy - H()/2, cx - W()/2),
+      orbitR: Math.hypot(cx - W()/2, cy - H()/2),
+      wide: isConfetti && Math.random() > .5
+    });
+  }
+  // floating letter
+  particles.push({ x: cx, y: cy,
+    vx: rnd(-.8,.8), vy: -3.5 - rnd(0,2),
+    life: 1, decay: .007,
+    color: mode === 'confetti' ? `hsl(${rnd(0,360)},90%,65%)` : pick(pal),
+    size: 20 + rnd(0,10), shape: 'char', char: key === ' ' ? '~' : key,
+    rot: 0, rotV: rnd(-.07,.07), gx: 0, gy: .05, wobble: 0, phase: 0
+  });
+}
+
+function getShape() {
+  const s = {
+    fireworks: ['circle','spark','ring'],
+    bubbles: ['bubble','circle'],
+    glitch: ['rect','line','circle'],
+    stars: ['star','circle','spark'],
+    confetti: ['rect','circle','strip'],
+    ripple: ['circle','ring'],
+    dna: ['helix','circle'],
+    inferno: ['spark','circle','ring'],
+    matrix: ['char'],
+    galaxy: ['circle','ring','star']
+  };
+  return pick(s[mode] || s.fireworks);
+}
+
+function burstAt(cx, cy, count, pal, spd) {
+  const gv = gravVec();
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI*2/count)*i + rnd(0,.3);
+    const sp = rnd(2,7) * (spd||1);
+    particles.push({
+      x: cx, y: cy, vx: Math.cos(angle)*sp, vy: Math.sin(angle)*sp,
+      life: 1, decay: .009 + rnd(0,.012),
+      color: pick(pal || PAL[mode]),
+      size: rnd(4,10), shape: pick(['circle','spark','ring','star']),
+      rot: rnd(0,Math.PI*2), rotV: rnd(-.25,.25),
+      gx: gv.gx, gy: gv.gy, wobble: 0, phase: 0
+    });
+  }
+}
+
+/* ─────────────────────────────────────────
+   COMBO EFFECTS
+───────────────────────────────────────── */
+function comboFire() {
+  comboSound();
+  for (let i = 0; i < 8; i++) setTimeout(() => {
+    const x = rnd(0,W()), y = rnd(H()*.2, H()*.8);
+    burstAt(x, y, 30, ['#ff6b6b','#ff922b','#ffd93d','#ff4500'], 1.2);
+    ripples.push({ x, y, r: 0, maxR: 60, color: '#ff6b6b', life: 1, speed: 4 });
+  }, i * 80);
+  flash('FIRE!', '#ff6b6b', 'FIRE');
+}
+function comboBoom() {
+  comboSound();
+  const cx = W()/2, cy = H()/2;
+  burstAt(cx, cy, 70, ['#ffd93d','#ff922b','#fff','#ff6b6b'], 2);
+  ripples.push({ x: cx, y: cy, r: 0, maxR: W(), color: '#ffd93d', life: 1, speed: 10 });
+  ripples.push({ x: cx, y: cy, r: 0, maxR: W()*.7, color: '#fff', life: 1, speed: 7 });
+  flash('BOOM!', '#ffd93d', 'BOOM');
+}
+function comboChaos() {
+  comboSound();
+  for (let i = 0; i < 20; i++) setTimeout(() => burstAt(rnd(0,W()), rnd(0,H()), 20, null, 1), i*40);
+  flash('CHAOS!', '#cc5de8', 'CHAOS');
+}
+function comboVibe() {
+  comboSound();
+  ['#ff6b6b','#ffd93d','#6bcb77','#7c6bff','#cc5de8','#ff6b9d'].forEach((c,i) =>
+    setTimeout(() => {
+      const x = W()*(i+1)/7;
+      burstAt(x, H()/2, 25, [c], 1);
+      ripples.push({ x, y: H()/2, r: 0, maxR: 50, color: c, life: 1, speed: 3 });
+    }, i*100)
+  );
+  flash('VIBE CHECK', '#7c6bff', 'VIBE');
+}
+function comboNuke() {
+  comboSound();
+  for (let i = 0; i < 5; i++) setTimeout(() => {
+    for (let j = 0; j < 6; j++) {
+      const x = rnd(0,W()), y = rnd(0,H());
+      burstAt(x, y, 40, ['#39ff14','#fff','#00fff5','#ffff00'], 1.5);
+      ripples.push({ x, y, r: 0, maxR: 120, color: '#39ff14', life: 1, speed: 7 });
+    }
+  }, i*120);
+  flash('NUKE ☢', '#39ff14', 'NUKE');
+}
+
+function flash(txt, col, word) {
+  const fl = document.getElementById('combo-flash');
+  const ct = document.getElementById('combo-text');
+  ct.textContent = txt; ct.style.color = col;
+  fl.style.opacity = '1';
+  setTimeout(() => fl.style.opacity = '0', 700);
+  const chip = document.querySelector(`.combo-chip[data-word="${word}"]`);
+  if (chip) { chip.classList.add('fired'); setTimeout(() => chip.classList.remove('fired'), 1000); }
+}
+
+/* ─────────────────────────────────────────
+   DRAW
+───────────────────────────────────────── */
+function drawP(p) {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, p.life);
+  ctx.fillStyle = p.color; ctx.strokeStyle = p.color;
+  ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+  const s = p.size;
+  switch (p.shape) {
+    case 'char':
+      ctx.font = `700 ${Math.round(s)}px JetBrains Mono,monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(p.char, 0, 0); break;
+    case 'circle':
+      ctx.beginPath(); ctx.arc(0,0,s/2,0,Math.PI*2); ctx.fill(); break;
+    case 'bubble':
+      ctx.beginPath(); ctx.arc(0,0,s/2,0,Math.PI*2); ctx.lineWidth=1.5; ctx.stroke(); break;
+    case 'spark':
+      ctx.lineWidth=1.5; ctx.beginPath();
+      ctx.moveTo(-s,0); ctx.lineTo(s,0); ctx.moveTo(0,-s); ctx.lineTo(0,s); ctx.stroke(); break;
+    case 'ring':
+      ctx.beginPath(); ctx.arc(0,0,s/2,0,Math.PI*2); ctx.lineWidth=1.5; ctx.stroke(); break;
+    case 'rect': case 'strip':
+      const w = p.wide ? s*1.8 : s*.6, h = p.wide ? s*.4 : s*1.2;
+      ctx.fillRect(-w/2,-h/2,w,h); break;
+    case 'line':
+      ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(-s,0); ctx.lineTo(s,0); ctx.stroke(); break;
+    case 'star':
+      drawStar(s); ctx.fill(); break;
+    case 'helix':
+      ctx.lineWidth=2; ctx.beginPath();
+      for (let t=0; t<=1; t+=.1) {
+        const hx = Math.sin(t*Math.PI*2+p.phase)*s*.5, hy = (t-.5)*s*2;
+        t===0 ? ctx.moveTo(hx,hy) : ctx.lineTo(hx,hy);
+      }
+      ctx.stroke(); break;
+  }
+  ctx.restore();
+}
+function drawStar(s) {
+  const r1=s/2, r2=s/4, sp=5;
+  let rot=-Math.PI/2, step=Math.PI/sp;
+  ctx.beginPath(); ctx.moveTo(Math.cos(rot)*r1, Math.sin(rot)*r1);
+  for (let i=0;i<sp;i++) {
+    rot+=step; ctx.lineTo(Math.cos(rot)*r2, Math.sin(rot)*r2);
+    rot+=step; ctx.lineTo(Math.cos(rot)*r1, Math.sin(rot)*r1);
+  }
+  ctx.closePath();
+}
+
+/* ─────────────────────────────────────────
+   TICK
+───────────────────────────────────────── */
+function tick() {
+  ctx.fillStyle = 'rgba(7,7,16,0.2)';
+  ctx.fillRect(0,0,W(),H());
+
+  // wormhole
+  if (wormOn && wormActive) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(124,107,255,0.5)';
+    for (let r=4; r<42; r+=8) {
+      ctx.beginPath(); ctx.arc(wormX, wormY, r, 0, Math.PI*2);
+      ctx.lineWidth=1; ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ripples
+  ripples = ripples.filter(r => r.life > 0);
+  for (const r of ripples) {
+    ctx.save(); ctx.globalAlpha = r.life * .55;
+    ctx.strokeStyle = r.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+    r.r += r.speed; r.life -= r.speed / r.maxR;
+  }
+
+  // particles
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    if (gravDir === 'orbit') {
+      p.orbitAngle = (p.orbitAngle||0) + .02;
+      p.orbitR = (p.orbitR||50) * .995;
+      p.x = W()/2 + Math.cos(p.orbitAngle) * p.orbitR;
+      p.y = H()/2 + Math.sin(p.orbitAngle) * p.orbitR;
+    } else {
+      p.x += p.vx + Math.sin(p.phase + p.life*8) * p.wobble;
+      p.y += p.vy;
+      p.vy += p.gy || .07;
+      p.vx += p.gx || 0;
+      p.vx *= .97;
+    }
+    if (wormOn && wormActive) {
+      const dx = wormX - p.x, dy = wormY - p.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 120) { const f = .8/dist; p.vx += dx*f; p.vy += dy*f; }
+      if (dist < 15) p.life = 0;
+    }
+    p.rot += p.rotV; p.life -= p.decay; p.phase += .05;
+    drawP(p);
+  }
+
+  // replay
+  if (replaying) {
+    const now = Date.now() - replayStart;
+    while (replayIdx < recLog.length && recLog[replayIdx].t - recLog[0].t <= now) {
+      const e = recLog[replayIdx++];
+      spawn(e.key, e.player);
+    }
+    if (replayIdx >= recLog.length) { replaying = false; document.getElementById('btn-replay').classList.remove('on'); }
+  }
+
+  heat = Math.max(0, heat - .006);
+  updateHUD();
+  requestAnimationFrame(tick);
+}
+
+/* ─────────────────────────────────────────
+   HUD
+───────────────────────────────────────── */
+function initDots() {
+  const hm = document.getElementById('heat-dots'); hm.innerHTML='';
+  for (let i=0; i<10; i++) { const d=document.createElement('div'); d.className='hdot'; hm.appendChild(d); }
+}
+initDots();
+
+function updateHUD() {
+  const dots = document.querySelectorAll('.hdot');
+  const lvl = Math.round(heat * dots.length);
+  dots.forEach((d,i) => {
+    d.style.background = i < lvl ? `hsl(${20+i*14},100%,62%)` : 'rgba(255,255,255,0.1)';
+    d.style.transform = i < lvl ? 'scale(1.2)' : 'scale(1)';
+  });
+  const vv = VIBES[mode] || VIBES.fireworks;
+  const vi = Math.min(Math.floor(heat * vv.length), vv.length-1);
+  document.getElementById('vibe-label').textContent = heat < .04 ? 'idle' : vv[vi];
+}
+
+/* ─────────────────────────────────────────
+   MAIN HANDLER
+───────────────────────────────────────── */
+function handleChar(key, player) {
+  player = player || 1;
+  if (!hasStarted) {
+    hasStarted = true;
+    document.getElementById('canvas-overlay').classList.add('hidden');
+  }
+  if (key === 'Backspace') {
+    typed = typed.slice(0,-1);
+    document.getElementById('typed-trail').textContent = typed.slice(-26);
+    return;
+  }
+  checkCombo(key);
+  spawn(key === ' ' ? '~' : key, player);
+  keyCount++; heat = Math.min(1, heat + .1);
+  if (multiOn) {
+    if (player === 1) p1score += Math.floor(rnd(5,15));
+    else p2score += Math.floor(rnd(5,15));
+    document.getElementById('p1score').textContent = `P1 · ${p1score}`;
+    document.getElementById('p2score').textContent = `P2 · ${p2score}`;
+  }
+  typed += key;
+  if (typed.length > 60) typed = typed.slice(-60);
+  document.getElementById('typed-trail').textContent = typed.slice(-26);
+}
+
+/* ─────────────────────────────────────────
+   COMBO CHECK
+───────────────────────────────────────── */
+function checkCombo(key) {
+  if (key.length !== 1) return;
+  comboBuffer = (comboBuffer + key).slice(-8).toUpperCase();
+  for (const [w, c] of Object.entries(COMBOS)) {
+    if (comboBuffer.endsWith(w)) { c.fn(); comboBuffer = ''; return; }
+  }
+  for (const [w, m] of Object.entries(UNLOCKS)) {
+    if (comboBuffer.endsWith(w) && !unlockedModes.has(m)) {
+      unlockedModes.add(m);
+      const pill = document.getElementById('pill-'+m);
+      if (pill) { pill.classList.remove('locked'); pill.classList.add('just-unlocked'); pill.textContent = '✦ '+m; }
+      flash('UNLOCKED: '+m.toUpperCase(), '#cc5de8', null);
+      comboSound(); comboBuffer = '';
+    }
+  }
+}
+
+/* ─────────────────────────────────────────
+   PAINT MODE
+───────────────────────────────────────── */
+cWrap.addEventListener('pointerdown', e => {
+  if (wormOn) { const r=cWrap.getBoundingClientRect(); wormX=e.clientX-r.left; wormY=e.clientY-r.top; wormActive=true; }
+  if (!painting) return;
+  paintDown = true;
+  const r = cWrap.getBoundingClientRect();
+  paintAt(e.clientX-r.left, e.clientY-r.top);
+});
+cWrap.addEventListener('pointermove', e => {
+  const r = cWrap.getBoundingClientRect();
+  if (wormOn) { wormX=e.clientX-r.left; wormY=e.clientY-r.top; wormActive=true; }
+  if (painting && paintDown) paintAt(e.clientX-r.left, e.clientY-r.top);
+});
+cWrap.addEventListener('pointerup', () => { paintDown=false; });
+cWrap.addEventListener('pointerleave', () => { paintDown=false; wormActive=false; });
+
+function paintAt(x, y) {
+  if (KEY_SFX[mode]) KEY_SFX[mode]();
+  const pal = PAL[mode]||PAL.fireworks;
+  const gv = gravVec();
+  for (let i=0; i<6; i++) {
+    particles.push({
+      x, y, vx: rnd(-1.5,1.5), vy: rnd(-1.5,1.5),
+      life: 1, decay: .018+rnd(0,.015), color: pick(pal),
+      size: rnd(4,12), shape: getShape(),
+      rot: rnd(0,Math.PI*2), rotV: rnd(-.15,.15),
+      gx: gv.gx*.25, gy: gv.gy*.25, wobble: 0, phase: rnd(0,Math.PI*2)
+    });
+  }
+  if (!hasStarted) { hasStarted=true; document.getElementById('canvas-overlay').classList.add('hidden'); }
+}
+
+/* ─────────────────────────────────────────
+   TOOL TOGGLES
+───────────────────────────────────────── */
+function toggleRecord() {
+  recording = !recording;
+  const btn = document.getElementById('btn-record');
+  const badge = document.getElementById('rec-badge');
+  if (recording) {
+    recLog = []; btn.classList.add('on-danger'); btn.innerHTML='<span class="tool-icon">⏹</span> stop';
+    badge.style.opacity='1';
+  } else {
+    btn.classList.remove('on-danger'); btn.innerHTML='<span class="tool-icon">⏺</span> record';
+    badge.style.opacity='0';
+    if (recLog.length) document.getElementById('btn-replay').style.display='';
+  }
+}
+
+function startReplay() {
+  if (!recLog.length) return;
+  replaying=true; replayIdx=0; replayStart=Date.now();
+  document.getElementById('btn-replay').classList.add('on');
+}
+
+function toggleBeat() {
+  beatOn = !beatOn;
+  const btn = document.getElementById('btn-beat');
+  const brow = document.getElementById('beat-row');
+  btn.classList.toggle('on', beatOn);
+  brow.style.display = beatOn ? 'flex' : 'none';
+  if (beatOn) {
+    startBeatTimer();
+  } else {
+    clearInterval(beatTimer); beatTimer=null;
+    document.getElementById('beat-pulse').style.opacity='0';
+  }
+}
+
+function startBeatTimer() {
+  clearInterval(beatTimer);
+  beatTimer = setInterval(() => {
+    beatSound();
+    const dot = document.getElementById('beat-pulse');
+    dot.style.opacity='1'; dot.style.transform='translateX(-50%) scale(1.6)';
+    setTimeout(() => { dot.style.opacity='0'; dot.style.transform='translateX(-50%) scale(1)'; }, 70);
+    document.querySelectorAll('.key').forEach(k => {
+      k.classList.add('beat-lit'); setTimeout(() => k.classList.remove('beat-lit'), 55);
+    });
+    beatCount++;
+    if (beatCount % 4 === 0) {
+      bpm = Math.min(200, Math.max(60, bpm + Math.round(heat*20 - 10)));
+      document.getElementById('bpm-slider').value = bpm;
+      document.getElementById('bpm-display').textContent = bpm + ' bpm';
+      startBeatTimer();
+    }
+  }, 60000/bpm);
+}
+
+function changeBpm(v) {
+  bpm = parseInt(v);
+  document.getElementById('bpm-display').textContent = bpm + ' bpm';
+  if (beatOn) startBeatTimer();
+}
+
+function togglePaint() {
+  painting = !painting;
+  document.getElementById('btn-paint').classList.toggle('on', painting);
+  cWrap.style.cursor = painting ? 'crosshair' : 'default';
+}
+
+function toggleMulti() {
+  multiOn = !multiOn;
+  document.getElementById('btn-multi').classList.toggle('on', multiOn);
+  document.getElementById('kb2-wrap').classList.toggle('show', multiOn);
+  document.getElementById('score-hud').style.opacity = multiOn ? '1' : '0';
+  if (multiOn) { p1score=0; p2score=0; document.getElementById('p1score').textContent='P1 · 0'; document.getElementById('p2score').textContent='P2 · 0'; }
+}
+
+function toggleWormhole() {
+  wormOn = !wormOn;
+  document.getElementById('btn-worm').classList.toggle('on', wormOn);
+  if (!wormOn) wormActive=false;
+}
+
+function toggleSound() {
+  soundOn = !soundOn;
+  const btn = document.getElementById('btn-sound');
+  btn.textContent = soundOn ? '♪' : '♪̶';
+  btn.title = soundOn ? 'Mute sound' : 'Enable sound';
+  btn.style.color = soundOn ? '' : 'rgba(240,240,248,0.25)';
+}
+
+function setGravity(dir, el) {
+  gravDir = dir;
+  document.querySelectorAll('.gbtn').forEach(b => b.classList.remove('on'));
+  el.classList.add('on');
+}
+
+function saveCanvas() {
+  const tmp = document.createElement('canvas');
+  tmp.width=canvas.width; tmp.height=canvas.height;
+  tmp.getContext('2d').drawImage(canvas,0,0);
+  const a = document.createElement('a');
+  a.download = 'vibekeys-' + Date.now() + '.png';
+  a.href = tmp.toDataURL('image/png');
+  a.click();
+}
+
+function clearAll() {
+  particles=[]; ripples=[]; typed=''; keyCount=0; heat=0; comboBuffer='';
+  p1score=0; p2score=0;
+  document.getElementById('typed-trail').textContent='';
+  document.getElementById('p1score').textContent='P1 · 0';
+  document.getElementById('p2score').textContent='P2 · 0';
+  updateHUD();
+}
+
+/* ─────────────────────────────────────────
+   MODE SWITCHING
+───────────────────────────────────────── */
+document.querySelectorAll('.mpill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.classList.contains('locked')) return;
+    document.querySelectorAll('.mpill').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    mode = btn.dataset.mode;
+    particles=[]; ripples=[]; typed=''; heat=0;
+    document.getElementById('typed-trail').textContent='';
+    updateHUD();
+  });
+});
+
+/* ─────────────────────────────────────────
+   START
+───────────────────────────────────────── */
+tick();
+</script>
+</body>
+</html>
