@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vibe Keys — Type. Explode. Feel Things.</title>
 <meta name="description" content="An interactive particle keyboard. Type anything and watch it explode into color.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -317,16 +317,37 @@ footer {
 }
 .icon-btn:hover { border-color: var(--border-hover); color: var(--text); }
 
-/* ── RESPONSIVE ── */
-@media (max-width: 480px) {
-  :root { --canvas-h: 260px; }
+/* ── KEYBOARD — desktop only ── */
+#keyboard-card { display: block; }
+/* mobile tap-to-type hint */
+#mobile-hint {
+  display: none;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  padding: .35rem 0 0;
+}
+/* hidden input to trigger native keyboard on mobile */
+#mobile-input {
+  position: absolute; opacity: 0; pointer-events: none;
+  width: 1px; height: 1px; top: 50%; left: 50%;
+  border: none; background: transparent; color: transparent;
+  font-size: 16px; /* prevents iOS zoom */
+}
+/* canvas active state on mobile */
+#canvas-wrap.kb-open { border-color: rgba(124,107,255,0.4); }
+
+@media (max-width: 700px) {
+  :root { --canvas-h: 55vw; }
   #app { padding: .75rem .6rem 2.5rem; gap: .75rem; }
-  .key { height: 38px; border-radius: 6px; }
+  #keyboard-card { display: none; }
+  #kb2-wrap { display: none !important; }
+  #mobile-hint { display: block; }
   #tools-grid { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 360px) {
-  .key { height: 34px; font-size: 9px; }
-  .key.spc { max-width: 160px; }
+  :root { --canvas-h: 52vw; }
 }
 
 /* ── SCROLLBAR ── */
@@ -354,11 +375,13 @@ footer {
   <!-- CANVAS -->
   <div id="canvas-wrap">
     <canvas id="c"></canvas>
+    <input id="mobile-input" type="text" autocomplete="off" autocorrect="off"
+      autocapitalize="off" spellcheck="false" aria-hidden="true">
 
     <div id="canvas-overlay">
       <div class="overlay-inner">
-        <div class="big">tap any key to start</div>
-        <div class="small">or press a key on screen below</div>
+        <div class="big" id="overlay-big">tap here to start</div>
+        <div class="small" id="overlay-small">your keyboard will pop up</div>
       </div>
     </div>
 
@@ -377,6 +400,8 @@ footer {
     <div id="typed-trail"></div>
     <div id="combo-flash"><span id="combo-text"></span></div>
   </div>
+
+  <div id="mobile-hint">tap the canvas above — your keyboard will pop up ↑</div>
 
   <!-- MODES -->
   <div class="card">
@@ -442,7 +467,7 @@ footer {
   </div>
 
   <!-- KEYBOARD P1 -->
-  <div class="card">
+  <div class="card" id="keyboard-card">
     <div class="card-title">keyboard — player 1</div>
     <div id="keyboard-wrap"></div>
   </div>
@@ -513,6 +538,7 @@ buildKB(P2ROWS, document.getElementById('kb2-inner'), true);
 
 document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (document.activeElement === mobileInput) return; // handled by mobile input
   const k = e.key;
   if (k === 'Backspace') { e.preventDefault(); handleChar('Backspace', 1); hlKey('⌫', false); return; }
   if (k === ' ') { e.preventDefault(); handleChar(' ', 1); hlKey('SPC', false); return; }
@@ -1012,15 +1038,65 @@ function checkCombo(key) {
 }
 
 /* ─────────────────────────────────────────
-   PAINT MODE
+   MOBILE / DESKTOP INPUT
 ───────────────────────────────────────── */
+const mobileInput = document.getElementById('mobile-input');
+const isMobile = () => window.innerWidth <= 700 || ('ontouchstart' in window && window.innerWidth <= 900);
+
+// Update overlay text based on device
+function updateOverlay() {
+  if (isMobile()) {
+    document.getElementById('overlay-big').textContent = 'tap here to start';
+    document.getElementById('overlay-small').textContent = 'your keyboard will pop up';
+  } else {
+    document.getElementById('overlay-big').textContent = 'tap any key to start';
+    document.getElementById('overlay-small').textContent = 'or use the keyboard below';
+  }
+}
+updateOverlay();
+window.addEventListener('resize', updateOverlay);
+
+// Canvas tap — on mobile focus hidden input; on desktop do nothing (physical keyboard handles it)
 cWrap.addEventListener('pointerdown', e => {
+  if (isMobile() && !painting && !wormOn) {
+    e.preventDefault();
+    mobileInput.focus();
+    cWrap.classList.add('kb-open');
+    if (!hasStarted) {
+      hasStarted = true;
+      document.getElementById('canvas-overlay').classList.add('hidden');
+    }
+    return;
+  }
+  // desktop paint / wormhole
   if (wormOn) { const r=cWrap.getBoundingClientRect(); wormX=e.clientX-r.left; wormY=e.clientY-r.top; wormActive=true; }
   if (!painting) return;
   paintDown = true;
   const r = cWrap.getBoundingClientRect();
   paintAt(e.clientX-r.left, e.clientY-r.top);
 });
+
+// Hidden input captures keypresses from native mobile keyboard
+mobileInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); handleChar(' ', 1); return; }
+  if (e.key === 'Backspace') { e.preventDefault(); handleChar('Backspace', 1); return; }
+});
+// Also catch input event for Android which may not fire keydown reliably
+let lastMobileVal = '';
+mobileInput.addEventListener('input', e => {
+  const val = mobileInput.value;
+  if (val.length > lastMobileVal.length) {
+    const newChar = val.slice(lastMobileVal.length);
+    for (const ch of newChar) handleChar(ch.toUpperCase(), 1);
+  }
+  // Keep input value short to avoid issues
+  mobileInput.value = '';
+  lastMobileVal = '';
+});
+mobileInput.addEventListener('blur', () => {
+  cWrap.classList.remove('kb-open');
+});
+
 cWrap.addEventListener('pointermove', e => {
   const r = cWrap.getBoundingClientRect();
   if (wormOn) { wormX=e.clientX-r.left; wormY=e.clientY-r.top; wormActive=true; }
